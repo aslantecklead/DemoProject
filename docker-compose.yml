@@ -14,6 +14,28 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  cache:
+    container_name: redis_container
+    image: redis:8.2-rc1-alpine
+    restart: always
+    ports:
+      - '6379:6379'
+    command: redis-server --save 20 1 --loglevel warning --requirepass eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    volumes:
+      - cache:/data
+    networks:
+      - app-network
 
   pgAdmin:
     container_name: pgadmin4_container
@@ -31,6 +53,8 @@ services:
 
   api:
     build: ./backend
+    env_file:
+      - ./backend/.env.docker
     container_name: api_container
     ports:
       - '4001:4000'
@@ -40,17 +64,25 @@ services:
       - DB_PASSWORD=admin
       - DB_NAME=postgres
       - DB_PORT=5432
+      - REDIS_HOST=cache
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=eYVX7EwVmmxKPCDmwMtyKVge8oLd2t81
     volumes:
       - ./backend:/app
       - /app/node_modules
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
     networks:
       - app-network
 
 volumes:
   postgres_data:
     name: postgres_data
+  cache:
+    driver: local
 
 networks:
   app-network:
